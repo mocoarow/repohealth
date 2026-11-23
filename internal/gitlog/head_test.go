@@ -271,9 +271,10 @@ func Test_CheckClean_shouldReturnErrDirtyWorktree_whenTrackedFileChanges(t *test
 			history: conflictHistory,
 			change: func(t *testing.T, dir string) {
 				t.Helper()
-				_, err := git(t, dir, "merge", "other")
+				_, err := git(t, dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "merge", "other")
 				var exitErr *exec.ExitError
 				require.ErrorAs(t, err, &exitErr)
+				require.NotEmpty(t, mustGit(t, dir, "ls-files", "--unmerged"))
 			},
 		},
 	}
