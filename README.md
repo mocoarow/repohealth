@@ -31,6 +31,10 @@ exclude:
   - "**/*_mock.go"
 stablePackages:
   - "*/domain/**"
+coverage:
+  - file: coverage.lcov
+  - file: svc-web/coverage/lcov.info
+    root: svc-web
 ```
 
 - `version` must be `1`.
@@ -38,3 +42,4 @@ stablePackages:
 - `groups` are optional. Each names two or more distinct areas defined in `areas`, and group names must be unique.
 - `exclude` holds doublestar glob patterns relative to the same directory. A pattern must be a clean slash-separated path, such as `gen/**` rather than `./gen/**` or `gen/`.
 - `stablePackages` are optional patterns of the same form over Go package directories.
+- `coverage` lists optional lcov reports. `root` is the directory their source paths are relative to, the repository root when left out. Both are clean slash-separated paths like the `exclude` patterns.
