@@ -153,6 +153,11 @@ func newRepo(t *testing.T, history string) string {
 	out, err = importCmd.CombinedOutput()
 	require.NoError(t, err, string(out))
 
+	indexCmd := exec.CommandContext(t.Context(), "git", "read-tree", "HEAD")
+	indexCmd.Dir = dir
+	out, err = indexCmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+
 	return dir
 }
 

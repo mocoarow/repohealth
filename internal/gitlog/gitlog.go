@@ -94,6 +94,24 @@ func changedFiles(ctx context.Context, dir string, h header) ([]string, error) {
 	return tokens[1:], nil
 }
 
+// TrackedFiles lists the files in the index under dir, relative to dir.
+func TrackedFiles(ctx context.Context, dir string) ([]string, error) {
+	out, err := run(dir, nil, exec.CommandContext(ctx, "git", "ls-files", "-z"))
+	if err != nil {
+		return nil, err
+	}
+
+	files := []string{}
+
+	for name := range strings.SplitSeq(out, "\x00") {
+		if name != "" {
+			files = append(files, name)
+		}
+	}
+
+	return files, nil
+}
+
 func run(dir string, stdin io.Reader, cmd *exec.Cmd) (string, error) {
 	var stderr bytes.Buffer
 
