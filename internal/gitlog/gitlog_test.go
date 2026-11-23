@@ -17,6 +17,9 @@ import (
 
 const mergeDate = "2026-10-31T23:30:00+09:00"
 
+// oldDate is 2020-01-01T00:00:00Z in the form fast-import reads.
+const oldDate = "1577836800 +0000"
+
 // baseHistory: main merges feature at :6; feature's own merge of main (:4) is off main's first parent.
 const baseHistory = `commit refs/heads/main
 mark :1
@@ -149,7 +152,8 @@ func newRepo(t *testing.T, history string) string {
 
 	importCmd := exec.CommandContext(t.Context(), "git", "fast-import", "--quiet")
 	importCmd.Dir = dir
-	importCmd.Stdin = strings.NewReader(strings.ReplaceAll(history, "DATE", strconv.FormatInt(date.Unix(), 10)+" "+date.Format("-0700")))
+	dated := strings.ReplaceAll(history, "OLDDATE", oldDate)
+	importCmd.Stdin = strings.NewReader(strings.ReplaceAll(dated, "DATE", strconv.FormatInt(date.Unix(), 10)+" "+date.Format("-0700")))
 	out, err = importCmd.CombinedOutput()
 	require.NoError(t, err, string(out))
 
@@ -161,6 +165,15 @@ func newRepo(t *testing.T, history string) string {
 	return dir
 }
 
+func headRev(t *testing.T, dir string) string {
+	t.Helper()
+
+	head, err := gitlog.Head(t.Context(), dir)
+	require.NoError(t, err)
+
+	return head.Hash
+}
+
 func Test_Merges_shouldReturnFirstParentMergesOnly_whenBranchMergedMain(t *testing.T) {
 	t.Parallel()
 
@@ -168,7 +181,7 @@ func Test_Merges_shouldReturnFirstParentMergesOnly_whenBranchMergedMain(t *testi
 	dir := newRepo(t, baseHistory)
 
 	// when
-	merges, err := gitlog.Merges(t.Context(), dir)
+	merges, err := gitlog.Merges(t.Context(), dir, headRev(t, dir))
 
 	// then
 	require.NoError(t, err)
@@ -182,7 +195,7 @@ func Test_Merges_shouldReturnFilesChangedAgainstFirstParent_whenMergeIsListed(t 
 	dir := newRepo(t, baseHistory)
 
 	// when
-	merges, err := gitlog.Merges(t.Context(), dir)
+	merges, err := gitlog.Merges(t.Context(), dir, headRev(t, dir))
 
 	// then
 	require.NoError(t, err)
@@ -196,7 +209,7 @@ func Test_Merges_shouldKeepRecordedTimeZone_whenMergeIsListed(t *testing.T) {
 	dir := newRepo(t, baseHistory)
 
 	// when
-	merges, err := gitlog.Merges(t.Context(), dir)
+	merges, err := gitlog.Merges(t.Context(), dir, headRev(t, dir))
 
 	// then
 	require.NoError(t, err)
@@ -212,7 +225,7 @@ func Test_Merges_shouldReturnPathsRelativeToDir_whenDirIsSubdirectory(t *testing
 	require.NoError(t, os.Mkdir(sub, 0o750))
 
 	// when
-	merges, err := gitlog.Merges(t.Context(), sub)
+	merges, err := gitlog.Merges(t.Context(), sub, headRev(t, sub))
 
 	// then
 	require.NoError(t, err)
@@ -226,7 +239,7 @@ func Test_Merges_shouldReturnBothPaths_whenFileMovesBetweenDirectories(t *testin
 	dir := newRepo(t, baseHistory+moveHistory)
 
 	// when
-	merges, err := gitlog.Merges(t.Context(), dir)
+	merges, err := gitlog.Merges(t.Context(), dir, headRev(t, dir))
 
 	// then
 	require.NoError(t, err)
@@ -240,7 +253,7 @@ func Test_Merges_shouldReturnNoFiles_whenMergeChangesNothing(t *testing.T) {
 	dir := newRepo(t, baseHistory+emptyHistory)
 
 	// when
-	merges, err := gitlog.Merges(t.Context(), dir)
+	merges, err := gitlog.Merges(t.Context(), dir, headRev(t, dir))
 
 	// then
 	require.NoError(t, err)
@@ -254,7 +267,7 @@ func Test_Merges_shouldReturnNoMerges_whenHistoryHasNone(t *testing.T) {
 	dir := newRepo(t, noMergeHistory)
 
 	// when
-	merges, err := gitlog.Merges(t.Context(), dir)
+	merges, err := gitlog.Merges(t.Context(), dir, headRev(t, dir))
 
 	// then
 	require.NoError(t, err)
@@ -268,7 +281,7 @@ func Test_Merges_shouldKeepFileName_whenPathContainsRecordSeparators(t *testing.
 	dir := newRepo(t, baseHistory+separatorHistory)
 
 	// when
-	merges, err := gitlog.Merges(t.Context(), dir)
+	merges, err := gitlog.Merges(t.Context(), dir, headRev(t, dir))
 
 	// then
 	require.NoError(t, err)
@@ -309,7 +322,7 @@ func Test_Merges_shouldReturnExitError_whenDirIsNotRepository(t *testing.T) {
 	dir := t.TempDir()
 
 	// when
-	_, err := gitlog.Merges(t.Context(), dir)
+	_, err := gitlog.Merges(t.Context(), dir, "HEAD")
 
 	// then
 	var exitErr *exec.ExitError

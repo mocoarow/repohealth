@@ -5,3 +5,9 @@ func ParseHeader(line string) error {
 
 	return err
 }
+
+func ParseChurnHeader(token string) error {
+	_, _, err := parseChurnHeader(token)
+
+	return err
+}

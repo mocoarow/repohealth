@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/mocoarow/repohealth/internal/config"
 )
@@ -24,39 +26,60 @@ type command struct {
 	run     func(ctx context.Context, args []string, stdout, stderr io.Writer) error
 }
 
-func commands() []command {
+// runner holds what commands read from the environment, so tests can fix it.
+type runner struct {
+	now     func() time.Time
+	version string
+}
+
+func newRunner() runner {
+	version := ""
+	if info, ok := debug.ReadBuildInfo(); ok {
+		version = info.Main.Version
+	}
+
+	return runner{now: time.Now, version: version}
+}
+
+func (r runner) commands() []command {
 	return []command{
 		{name: "validate", summary: "load and validate the configuration file", run: runValidate},
+		{name: "snapshot", summary: "measure HEAD and append the result to .repohealth", run: r.runSnapshot},
+		{name: "report", summary: "write CSV files from the saved history", run: runReport},
 	}
 }
 
 // Run executes the command named by args[0]. Results go to stdout; usage after a mistake goes to stderr.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	return newRunner().run(ctx, args, stdout, stderr)
+}
+
+func (r runner) run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return writeUsage(stderr, ErrUsage)
+		return writeUsage(stderr, r, ErrUsage)
 	}
 
 	switch args[0] {
 	case "-h", "-help", "--help", "help":
-		return writeUsage(stdout, nil)
+		return writeUsage(stdout, r, nil)
 	}
 
-	for _, c := range commands() {
+	for _, c := range r.commands() {
 		if c.name == args[0] {
 			return c.run(ctx, args[1:], stdout, stderr)
 		}
 	}
 
-	return writeUsage(stderr, fmt.Errorf("%w: %w: %s", ErrUsage, ErrUnknownCommand, args[0]))
+	return writeUsage(stderr, r, fmt.Errorf("%w: %w: %s", ErrUsage, ErrUnknownCommand, args[0]))
 }
 
 // writeUsage writes the command list to w and then returns cause.
-func writeUsage(w io.Writer, cause error) error {
+func writeUsage(w io.Writer, r runner, cause error) error {
 	var b strings.Builder
 
 	b.WriteString("usage: repohealth <command> [flags]\n\ncommands:\n")
 
-	for _, c := range commands() {
+	for _, c := range r.commands() {
 		fmt.Fprintf(&b, "  %-10s %s\n", c.name, c.summary)
 	}
 
@@ -82,22 +105,31 @@ func writeText(w io.Writer, text string, cause error) error {
 	return cause
 }
 
-func runValidate(_ context.Context, args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
+// parseFlags parses args into fs. done is true when the command must stop: help was shown or the arguments were wrong.
+func parseFlags(fs *flag.FlagSet, args []string, stdout, stderr io.Writer) (done bool, err error) {
 	fs.SetOutput(io.Discard)
-
-	path := fs.String("config", config.FileName, "path to the configuration file")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return writeFlags(stdout, fs, nil)
+			return true, writeFlags(stdout, fs, nil)
 		}
 
-		return writeFlags(stderr, fs, fmt.Errorf("%w: validate: %w", ErrUsage, err))
+		return true, writeFlags(stderr, fs, fmt.Errorf("%w: %s: %w", ErrUsage, fs.Name(), err))
 	}
 
 	if fs.NArg() > 0 {
-		return writeFlags(stderr, fs, fmt.Errorf("%w: validate: unexpected argument %s", ErrUsage, fs.Arg(0)))
+		return true, writeFlags(stderr, fs, fmt.Errorf("%w: %s: unexpected argument %s", ErrUsage, fs.Name(), fs.Arg(0)))
+	}
+
+	return false, nil
+}
+
+func runValidate(_ context.Context, args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
+	path := fs.String("config", config.FileName, "path to the configuration file")
+
+	if done, err := parseFlags(fs, args, stdout, stderr); done {
+		return err
 	}
 
 	if _, err := config.Load(*path); err != nil {

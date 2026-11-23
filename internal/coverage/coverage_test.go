@@ -239,6 +239,37 @@ func Test_Measure_shouldSkipFile_whenFileIsNotInAnyArea(t *testing.T) {
 	}
 }
 
+func Test_Measure_shouldCountSkippedRecords_whenSourceIsOutsideConfigDirectory(t *testing.T) {
+	t.Parallel()
+
+	// given
+	lcov := "SF:/elsewhere/x.go\nDA:1,1\nend_of_record\nSF:../other/y.go\nDA:1,1\nend_of_record\n"
+	fsys := fstest.MapFS{"c.lcov": report(lcov)}
+	cfg := testConfig(config.Report{File: "c.lcov", Root: ""})
+
+	// when
+	got, err := coverage.Measure(fsys, cfg)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, 2, got.Reports[0].Skipped)
+}
+
+func Test_Measure_shouldNotCountSkippedRecords_whenSourceIsInsideRepositoryButOutsideAreas(t *testing.T) {
+	t.Parallel()
+
+	// given
+	fsys := fstest.MapFS{"c.lcov": report("SF:tools/t.go\nDA:1,1\nend_of_record\n")}
+	cfg := testConfig(config.Report{File: "c.lcov", Root: ""})
+
+	// when
+	got, err := coverage.Measure(fsys, cfg)
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, 0, got.Reports[0].Skipped)
+}
+
 func Test_Measure_shouldReturnErrNotExist_whenReportIsMissing(t *testing.T) {
 	t.Parallel()
 

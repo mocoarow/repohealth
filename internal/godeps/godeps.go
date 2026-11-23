@@ -36,17 +36,17 @@ type Graph struct {
 
 // AreaImports counts the package imports from one area into another.
 type AreaImports struct {
-	From    string
-	To      string
-	Imports int
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Imports int    `json:"imports"`
 }
 
 // Stability is the instability of one package.
 type Stability struct {
-	Dir         string
-	Afferent    int
-	Efferent    int
-	Instability float64
+	Dir         string  `json:"dir"`
+	Afferent    int     `json:"afferent"`
+	Efferent    int     `json:"efferent"`
+	Instability float64 `json:"instability"`
 }
 
 type scanned struct {

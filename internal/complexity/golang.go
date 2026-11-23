@@ -22,11 +22,11 @@ const CycloNotMeasured = 0
 
 // Function is the complexity of one function.
 type Function struct {
-	File   string
-	Line   int
-	Name   string
-	Cyclo  int
-	Cognit int
+	File   string `json:"file"`
+	Line   int    `json:"line"`
+	Name   string `json:"name"`
+	Cyclo  int    `json:"cyclo"`
+	Cognit int    `json:"cognit"`
 }
 
 // Go measures the hand-written functions in the files source.GoProduction accepts.

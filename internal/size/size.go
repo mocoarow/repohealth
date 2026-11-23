@@ -14,11 +14,11 @@ import (
 
 // File is the size of one measured source file.
 type File struct {
-	Path  string
-	Area  string
-	Lang  source.Lang
-	Test  bool
-	Lines int
+	Path  string      `json:"path"`
+	Area  string      `json:"area"`
+	Lang  source.Lang `json:"lang"`
+	Test  bool        `json:"test"`
+	Lines int         `json:"lines"`
 }
 
 // Measure counts the lines of the files source.Classify accepts, in the order of files.
