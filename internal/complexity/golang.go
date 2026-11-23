@@ -14,7 +14,7 @@ import (
 	"github.com/uudashr/gocognit"
 
 	"github.com/mocoarow/repohealth/internal/config"
-	"github.com/mocoarow/repohealth/internal/gosrc"
+	"github.com/mocoarow/repohealth/internal/source"
 )
 
 // CycloNotMeasured is the Cyclo of a function in a language without a cyclomatic measure.
@@ -29,12 +29,12 @@ type Function struct {
 	Cognit int
 }
 
-// Go measures the hand-written functions in the files gosrc.Counted accepts.
+// Go measures the hand-written functions in the files source.GoProduction accepts.
 func Go(fsys fs.FS, cfg config.Config, files []string) ([]Function, error) {
 	funcs := []Function{}
 
 	for _, file := range files {
-		if !gosrc.Counted(cfg, file) {
+		if !source.GoProduction(cfg, file) {
 			continue
 		}
 

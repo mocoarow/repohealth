@@ -37,6 +37,8 @@ var (
 	ErrInvalidPattern = errors.New("invalid pattern")
 	// ErrUnknownGroupArea reports a group member that is not the name of an area.
 	ErrUnknownGroupArea = errors.New("group names an unknown area")
+	// ErrInvalidCoveragePath reports a coverage file or root that is not a clean path inside the repository.
+	ErrInvalidCoveragePath = errors.New("invalid coverage path")
 )
 
 // Config is the content of repohealth.yml.
@@ -49,6 +51,14 @@ type Config struct {
 	Exclude []string `validate:"dive,required"          yaml:"exclude"`
 	// StablePackages are globs over package directories whose instability is reported.
 	StablePackages []string `validate:"dive,required" yaml:"stablePackages"`
+	Coverage       []Report `validate:"dive"          yaml:"coverage"`
+}
+
+// Report is an lcov coverage report.
+type Report struct {
+	File string `validate:"required" yaml:"file"`
+	// Root is the directory its SF paths are relative to; empty means the repository root.
+	Root string `yaml:"root"`
 }
 
 // Area is a named group of directories whose changes count as one unit.
@@ -103,6 +113,7 @@ func Load(path string) (Config, error) {
 		Groups:         cfg.Groups,
 		Exclude:        cfg.Exclude,
 		StablePackages: cfg.StablePackages,
+		Coverage:       cfg.Coverage,
 	}, nil
 }
 
@@ -162,6 +173,7 @@ func validate(root *os.Root, cfg Config) ([]Area, error) {
 	errs = append(errs, validateGroups(cfg.Groups, cfg.Areas)...)
 	errs = append(errs, validatePatterns("exclude", cfg.Exclude)...)
 	errs = append(errs, validatePatterns("stablePackages", cfg.StablePackages)...)
+	errs = append(errs, validateCoverage(cfg.Coverage)...)
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, errors.Join(errs...))
 	}
@@ -279,6 +291,18 @@ func validateGroups(groups []Group, areas []Area) []error {
 			if !known[name] {
 				errs = append(errs, fmt.Errorf("%w: group %s: %s", ErrUnknownGroupArea, g.Name, name))
 			}
+		}
+	}
+
+	return errs
+}
+
+func validateCoverage(reports []Report) []error {
+	var errs []error
+
+	for _, r := range reports {
+		if !fs.ValidPath(r.File) || r.File == "." || (r.Root != "" && !fs.ValidPath(r.Root)) {
+			errs = append(errs, fmt.Errorf("%w: file %q root %q", ErrInvalidCoveragePath, r.File, r.Root))
 		}
 	}
 

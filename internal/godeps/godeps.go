@@ -15,7 +15,7 @@ import (
 	"golang.org/x/mod/modfile"
 
 	"github.com/mocoarow/repohealth/internal/config"
-	"github.com/mocoarow/repohealth/internal/gosrc"
+	"github.com/mocoarow/repohealth/internal/source"
 )
 
 // ErrNoModule reports a Go package without a usable go.mod above it.
@@ -54,7 +54,7 @@ type scanned struct {
 	imports map[string]bool
 }
 
-// Load builds the graph from the files gosrc.Counted accepts.
+// Load builds the graph from the files source.GoProduction accepts.
 func Load(fsys fs.FS, cfg config.Config, files []string) (Graph, error) {
 	byDir, err := scan(fsys, cfg, files)
 	if err != nil {
@@ -102,7 +102,7 @@ func scan(fsys fs.FS, cfg config.Config, files []string) (map[string]scanned, er
 	byDir := map[string]scanned{}
 
 	for _, file := range files {
-		if !gosrc.Counted(cfg, file) {
+		if !source.GoProduction(cfg, file) {
 			continue
 		}
 

@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/mocoarow/repohealth/internal/config"
+	"github.com/mocoarow/repohealth/internal/source"
 )
 
 const (
@@ -64,10 +65,12 @@ func TypeScript(ctx context.Context, cfg config.Config, files []string) ([]Funct
 	byDir := map[string]map[string]bool{}
 
 	for _, file := range files {
-		dir, ok := cfg.PathOf(file)
-		if !ok || !isScript(file) {
+		kind, ok := source.Classify(cfg, file)
+		if !ok || kind.Lang != source.Script || kind.Test {
 			continue
 		}
+
+		dir, _ := cfg.PathOf(file)
 
 		if byDir[dir] == nil {
 			byDir[dir] = map[string]bool{}
@@ -92,18 +95,6 @@ func TypeScript(ctx context.Context, cfg config.Config, files []string) ([]Funct
 	})
 
 	return funcs, nil
-}
-
-func isScript(file string) bool {
-	switch path.Ext(file) {
-	case ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs":
-	default:
-		return false
-	}
-
-	base := path.Base(file)
-
-	return !strings.HasSuffix(base, ".d.ts") && !strings.Contains(base, ".test.") && !strings.Contains(base, ".spec.")
 }
 
 func lintDir(ctx context.Context, root, dir string, targets map[string]bool) ([]Function, error) {
