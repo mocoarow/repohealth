@@ -101,15 +101,35 @@ func TrackedFiles(ctx context.Context, dir string) ([]string, error) {
 		return nil, err
 	}
 
-	files := []string{}
+	return splitNames(out), nil
+}
+
+// Churn counts, per file under dir, the non-merge commits of HEAD that changed it.
+func Churn(ctx context.Context, dir string) (map[string]int, error) {
+	out, err := run(dir, nil, exec.CommandContext(ctx, "git", "log", "--root", "--no-merges", "--no-show-signature",
+		"--format=", "--name-only", "-z", "--no-renames", "--relative"))
+	if err != nil {
+		return nil, err
+	}
+
+	churn := map[string]int{}
+	for _, name := range splitNames(out) {
+		churn[name]++
+	}
+
+	return churn, nil
+}
+
+func splitNames(out string) []string {
+	names := []string{}
 
 	for name := range strings.SplitSeq(out, "\x00") {
 		if name != "" {
-			files = append(files, name)
+			names = append(names, name)
 		}
 	}
 
-	return files, nil
+	return names
 }
 
 func run(dir string, stdin io.Reader, cmd *exec.Cmd) (string, error) {
