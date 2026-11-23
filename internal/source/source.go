@@ -1,10 +1,20 @@
 package source
 
 import (
+	"errors"
+	"fmt"
 	"path"
 	"strings"
 
 	"github.com/mocoarow/repohealth/internal/config"
+)
+
+// ErrUnknownLang reports a language that has no short name, or a short name that is no language.
+var ErrUnknownLang = errors.New("unknown language")
+
+const (
+	goName     = "go"
+	scriptName = "ts"
 )
 
 // Lang is the language of a source file.
@@ -17,6 +27,32 @@ const (
 	// Script is TypeScript or JavaScript source.
 	Script
 )
+
+// MarshalText returns the short name used in JSON.
+func (l Lang) MarshalText() ([]byte, error) {
+	switch l {
+	case Go:
+		return []byte(goName), nil
+	case Script:
+		return []byte(scriptName), nil
+	default:
+		return nil, fmt.Errorf("%w: %d", ErrUnknownLang, int(l))
+	}
+}
+
+// UnmarshalText reads the short name MarshalText returns.
+func (l *Lang) UnmarshalText(text []byte) error {
+	switch string(text) {
+	case goName:
+		*l = Go
+	case scriptName:
+		*l = Script
+	default:
+		return fmt.Errorf("%w: %q", ErrUnknownLang, text)
+	}
+
+	return nil
+}
 
 // Kind is what a measured source file is.
 type Kind struct {
@@ -47,6 +83,13 @@ func GoProduction(cfg config.Config, file string) bool {
 	k, ok := Classify(cfg, file)
 
 	return ok && k.Lang == Go && !k.Test
+}
+
+// ScriptProduction reports whether file is a non-test script source that measurements read.
+func ScriptProduction(cfg config.Config, file string) bool {
+	k, ok := Classify(cfg, file)
+
+	return ok && k.Lang == Script && !k.Test
 }
 
 func isScript(file string) bool {

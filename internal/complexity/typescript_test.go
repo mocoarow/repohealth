@@ -1,8 +1,12 @@
 package complexity_test
 
 import (
+	"fmt"
 	"io/fs"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -212,4 +216,211 @@ func Test_NameAt_shouldReturnErrNotExist_whenFileIsMissing(t *testing.T) {
 
 	// then
 	require.ErrorIs(t, err, fs.ErrNotExist)
+}
+
+const batchFiles = 201
+
+const branchingSource = "export function f(a: number): number {\n  if (a > 0) {\n    if (a > 1) {\n      return 1;\n    }\n  }\n  return 0;\n}\n"
+
+func gitRepoWithWebArea(t *testing.T, files map[string]string) config.Config {
+	t.Helper()
+
+	root := t.TempDir()
+
+	initCmd := exec.CommandContext(t.Context(), "git", "init", "-q")
+	initCmd.Dir = root
+	out, err := initCmd.CombinedOutput()
+	require.NoError(t, err, string(out))
+
+	for name, body := range files {
+		full := filepath.Join(root, filepath.FromSlash(name))
+		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o750))
+		require.NoError(t, os.WriteFile(full, []byte(body), 0o600))
+	}
+
+	return config.Config{
+		Root:    root,
+		Version: 1,
+		Areas:   []config.Area{{Name: "web", Paths: []string{"web"}}},
+		Groups:  nil,
+		Exclude: nil,
+	}
+}
+
+func Test_TypeScript_shouldMeasureFile_whenGitignoreIgnoresIt(t *testing.T) {
+	t.Parallel()
+
+	// given
+	cfg := gitRepoWithWebArea(t, map[string]string{
+		"web/.gitignore": "/build/\n",
+		"web/build/x.ts": branchingSource,
+	})
+
+	// when
+	got, err := complexity.TypeScript(t.Context(), cfg, []string{"web/build/x.ts"})
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, []string{"web/build/x.ts"}, fileNames(got))
+}
+
+func Test_TypeScript_shouldMeasureEveryFile_whenFilesExceedBatch(t *testing.T) {
+	t.Parallel()
+
+	// given
+	bodies := map[string]string{}
+	files := make([]string, 0, batchFiles)
+
+	for i := range batchFiles {
+		name := fmt.Sprintf("web/f%03d.ts", i)
+		bodies[name] = branchingSource
+		files = append(files, name)
+	}
+
+	cfg := gitRepoWithWebArea(t, bodies)
+
+	// when
+	got, err := complexity.TypeScript(t.Context(), cfg, files)
+
+	// then
+	require.NoError(t, err)
+	assert.Len(t, got, batchFiles)
+}
+
+func Test_TypeScript_shouldMeasureFile_whenNameHasGlobOrDollarCharacters(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		file string
+	}{
+		{name: "square brackets", file: "web/app/[id]/page.ts"},
+		{name: "dollar sign", file: "web/routes/workbooks.$workbookId.ts"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			cfg := gitRepoWithWebArea(t, map[string]string{tt.file: branchingSource})
+
+			// when
+			got, err := complexity.TypeScript(t.Context(), cfg, []string{tt.file})
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, []string{tt.file}, fileNames(got))
+		})
+	}
+}
+
+func Test_TypeScript_shouldMeasureFile_whenAreaPathIsRoot(t *testing.T) {
+	t.Parallel()
+
+	// given
+	cfg := gitRepoWithWebArea(t, map[string]string{"web/app.ts": branchingSource})
+	cfg.Areas = []config.Area{{Name: "all", Paths: []string{"."}}}
+
+	// when
+	got, err := complexity.TypeScript(t.Context(), cfg, []string{"web/app.ts"})
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, []string{"web/app.ts"}, fileNames(got))
+}
+
+func Test_TypeScript_shouldReturnErrBiomeInternal_whenTargetFileIsMissing(t *testing.T) {
+	t.Parallel()
+
+	// given
+	cfg := gitRepoWithWebArea(t, map[string]string{"web/app.ts": branchingSource})
+
+	// when
+	_, err := complexity.TypeScript(t.Context(), cfg, []string{"web/missing.ts"})
+
+	// then
+	require.ErrorIs(t, err, complexity.ErrBiomeInternal)
+}
+
+func Test_TypeScript_shouldReturnErrBiomeInternalWithMessage_whenTargetFileIsMissing(t *testing.T) {
+	t.Parallel()
+
+	// given
+	cfg := gitRepoWithWebArea(t, map[string]string{"web/app.ts": branchingSource})
+
+	// when
+	_, err := complexity.TypeScript(t.Context(), cfg, []string{"web/missing.ts"})
+
+	// then
+	require.ErrorContains(t, err, "No such file or directory")
+}
+
+func Test_TypeScript_shouldReturnErrBiomeParse_whenFileHasSyntaxError(t *testing.T) {
+	t.Parallel()
+
+	// given
+	cfg := gitRepoWithWebArea(t, map[string]string{"web/bad.ts": "export const x = (;\n"})
+
+	// when
+	_, err := complexity.TypeScript(t.Context(), cfg, []string{"web/bad.ts"})
+
+	// then
+	require.ErrorIs(t, err, complexity.ErrBiomeParse)
+}
+
+func Test_TypeScript_shouldNameFileAndMessage_whenFileHasSyntaxError(t *testing.T) {
+	t.Parallel()
+
+	// given
+	cfg := gitRepoWithWebArea(t, map[string]string{"web/bad.ts": "export const x = (;\n"})
+
+	// when
+	_, err := complexity.TypeScript(t.Context(), cfg, []string{"web/bad.ts"})
+
+	// then
+	require.ErrorContains(t, err, "bad.ts: expected `)` but instead found `;`")
+}
+
+func Test_FunctionsOf_shouldReturnErrUnexpectedBiomeOutput_whenDiagnosticPathWasNotRequested(t *testing.T) {
+	t.Parallel()
+
+	// given
+	sources := fstest.MapFS{"web/a.ts": {Data: []byte(branchingSource)}}
+
+	// when
+	err := complexity.FunctionsOf(sources, "web", []string{"web/a.ts"}, "other.ts")
+
+	// then
+	require.ErrorIs(t, err, complexity.ErrUnexpectedBiomeOutput)
+}
+
+func Test_FunctionsOf_shouldNamePath_whenDiagnosticPathWasNotRequested(t *testing.T) {
+	t.Parallel()
+
+	// given
+	sources := fstest.MapFS{"web/a.ts": {Data: []byte(branchingSource)}}
+
+	// when
+	err := complexity.FunctionsOf(sources, "web", []string{"web/a.ts"}, "other.ts")
+
+	// then
+	require.ErrorContains(t, err, "web/other.ts")
+}
+
+func Test_TypeScript_shouldMeasureFile_whenFileExceedsDefaultMaxSize(t *testing.T) {
+	t.Parallel()
+
+	// given
+	const overBiomeDefaultBytes = 1100 * 1024
+
+	cfg := gitRepoWithWebArea(t, map[string]string{
+		"web/big.ts": branchingSource + "// " + strings.Repeat("x", overBiomeDefaultBytes) + "\n",
+	})
+
+	// when
+	got, err := complexity.TypeScript(t.Context(), cfg, []string{"web/big.ts"})
+
+	// then
+	require.NoError(t, err)
+	assert.Equal(t, []string{"web/big.ts"}, fileNames(got))
 }

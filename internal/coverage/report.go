@@ -27,22 +27,24 @@ var ErrMalformedReport = errors.New("malformed lcov report")
 
 // Report is one lcov file that was read.
 type Report struct {
-	File    string
-	ModTime time.Time
+	File    string    `json:"file"`
+	ModTime time.Time `json:"modTime"`
+	// Skipped counts the SF records that point outside the config directory.
+	Skipped int `json:"skipped"`
 }
 
 // Layer is the line coverage of one top-level directory of an area.
 type Layer struct {
-	Area    string
-	Layer   string
-	Covered int
-	Lines   int
+	Area    string `json:"area"`
+	Layer   string `json:"layer"`
+	Covered int    `json:"covered"`
+	Lines   int    `json:"lines"`
 }
 
 // Result is the coverage of every report in the configuration.
 type Result struct {
-	Reports []Report
-	Layers  []Layer
+	Reports []Report `json:"reports"`
+	Layers  []Layer  `json:"layers"`
 }
 
 // Measure reads the configured lcov reports and sums their lines per area and layer.
@@ -61,20 +63,22 @@ func Measure(fsys fs.FS, cfg config.Config) (Result, error) {
 			return Result{}, fmt.Errorf("read %s: %w", r.File, err)
 		}
 
-		if err := parse(data, cfg.Root, r.Root, lines); err != nil {
+		skipped, err := parse(data, cfg.Root, r.Root, lines)
+		if err != nil {
 			return Result{}, fmt.Errorf("%s: %w", r.File, err)
 		}
 
-		reports = append(reports, Report{File: r.File, ModTime: info.ModTime()})
+		reports = append(reports, Report{File: r.File, ModTime: info.ModTime(), Skipped: skipped})
 	}
 
 	return Result{Reports: reports, Layers: layers(cfg, lines)}, nil
 }
 
-func parse(data []byte, repoRoot, root string, lines map[string]map[int]bool) error {
+func parse(data []byte, repoRoot, root string, lines map[string]map[int]bool) (int, error) {
 	var (
 		file     string
 		inRecord bool
+		skipped  int
 	)
 
 	scanner := bufio.NewScanner(bytes.NewReader(data))
@@ -84,10 +88,13 @@ func parse(data []byte, repoRoot, root string, lines map[string]map[int]bool) er
 		switch key {
 		case "SF":
 			file, inRecord = sourcePath(repoRoot, root, value), true
+			if file == "" {
+				skipped++
+			}
 		case "DA":
 			line, hits, err := lineHits(value)
 			if err != nil || !inRecord {
-				return fmt.Errorf("%w: DA:%s", ErrMalformedReport, value)
+				return 0, fmt.Errorf("%w: DA:%s", ErrMalformedReport, value)
 			}
 
 			if file == "" {
@@ -105,10 +112,10 @@ func parse(data []byte, repoRoot, root string, lines map[string]map[int]bool) er
 	}
 
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("scan: %w", err)
+		return 0, fmt.Errorf("scan: %w", err)
 	}
 
-	return nil
+	return skipped, nil
 }
 
 func sourcePath(repoRoot, root, sf string) string {

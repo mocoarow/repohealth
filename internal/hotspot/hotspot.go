@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/mocoarow/repohealth/internal/complexity"
+	"github.com/mocoarow/repohealth/internal/gitlog"
 )
 
 // minCognit leaves out trivial functions, which Biome never reports, so Go and TypeScript count alike.
@@ -12,15 +13,16 @@ const minCognit = 2
 
 // File is one file's hotspot score.
 type File struct {
-	Path      string
-	Churn     int
-	SumCognit int
-	MaxCognit int
-	Score     int
+	Path        string `json:"path"`
+	Churn       int    `json:"churn"`
+	RecentChurn int    `json:"recentChurn"`
+	SumCognit   int    `json:"sumCognit"`
+	MaxCognit   int    `json:"maxCognit"`
+	Score       int    `json:"score"`
 }
 
 // Rank scores every file that has a function of at least minCognit.
-func Rank(funcs []complexity.Function, churn map[string]int) []File {
+func Rank(funcs []complexity.Function, churn map[string]gitlog.FileChurn) []File {
 	byPath := map[string]File{}
 
 	for _, f := range funcs {
@@ -30,22 +32,24 @@ func Rank(funcs []complexity.Function, churn map[string]int) []File {
 
 		file := byPath[f.File]
 		byPath[f.File] = File{
-			Path:      f.File,
-			Churn:     churn[f.File],
-			SumCognit: file.SumCognit + f.Cognit,
-			MaxCognit: max(file.MaxCognit, f.Cognit),
-			Score:     0,
+			Path:        f.File,
+			Churn:       churn[f.File].Total,
+			RecentChurn: churn[f.File].Recent,
+			SumCognit:   file.SumCognit + f.Cognit,
+			MaxCognit:   max(file.MaxCognit, f.Cognit),
+			Score:       0,
 		}
 	}
 
 	files := make([]File, 0, len(byPath))
 	for _, file := range byPath {
 		files = append(files, File{
-			Path:      file.Path,
-			Churn:     file.Churn,
-			SumCognit: file.SumCognit,
-			MaxCognit: file.MaxCognit,
-			Score:     file.Churn * file.SumCognit,
+			Path:        file.Path,
+			Churn:       file.Churn,
+			RecentChurn: file.RecentChurn,
+			SumCognit:   file.SumCognit,
+			MaxCognit:   file.MaxCognit,
+			Score:       file.Churn * file.SumCognit,
 		})
 	}
 

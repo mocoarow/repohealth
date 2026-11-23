@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "takenAt": "2026-03-04T05:06:07+05:45",
+  "rev": "abc123def456",
+  "committedAt": "2026-03-03T10:11:12+05:45",
+  "tools": {
+    "repohealth": "1.2.3",
+    "biome": "2.3.4"
+  },
+  "crossArea": {
+    "months": [
+      {
+        "period": "2026-02",
+        "prs": 8,
+        "crossArea": 3,
+        "groups": [
+          {
+            "group": "backend",
+            "crossArea": 2
+          }
+        ]
+      }
+    ],
+    "pairs": [
+      {
+        "a": "api",
+        "b": "core",
+        "prs": 4
+      }
+    ]
+  },
+  "hotspots": [
+    {
+      "path": "internal/api/handler.go",
+      "churn": 9,
+      "recentChurn": 5,
+      "sumCognit": 17,
+      "maxCognit": 12,
+      "score": 153
+    }
+  ],
+  "functions": [
+    {
+      "lang": "go",
+      "file": "internal/api/handler.go",
+      "line": 42,
+      "name": "Handle",
+      "cyclo": 6,
+      "cognit": 12
+    }
+  ],
+  "areaImports": [
+    {
+      "from": "api",
+      "to": "core",
+      "imports": 6
+    }
+  ],
+  "stability": [
+    {
+      "dir": "internal/api",
+      "afferent": 2,
+      "efferent": 3,
+      "instability": 0.6
+    }
+  ],
+  "coverage": {
+    "reports": [
+      {
+        "file": "coverage/lcov.info",
+        "modTime": "2026-03-02T01:02:03+05:45",
+        "skipped": 7
+      }
+    ],
+    "layers": [
+      {
+        "area": "api",
+        "layer": "internal",
+        "covered": 8,
+        "lines": 10
+      }
+    ]
+  },
+  "largestFiles": [
+    {
+      "path": "web/app.ts",
+      "area": "web",
+      "lang": "ts",
+      "test": true,
+      "lines": 321
+    }
+  ]
+}

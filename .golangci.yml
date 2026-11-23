@@ -92,8 +92,8 @@ linters:
     tagliatelle:
       case:
         rules:
-          # Settings keys follow the golangci-lint convention (e.g. max-lines).
-          json: kebab
+          # Keys of the .repohealth JSON files.
+          json: camel
     wrapcheck:
       extra-ignore-sigs:
         - errors.Errorf(

@@ -19,7 +19,7 @@ const (
 // ErrUnexpectedOutput reports git output this package cannot read.
 var ErrUnexpectedOutput = errors.New("unexpected git output")
 
-// Merge is a merge commit on the first-parent history of HEAD.
+// Merge is a merge commit on the first-parent history of a revision.
 type Merge struct {
 	Hash        string
 	CommittedAt time.Time
@@ -33,10 +33,10 @@ type header struct {
 	committedAt time.Time
 }
 
-// Merges lists the merge commits on the first-parent history of HEAD in dir.
-func Merges(ctx context.Context, dir string) ([]Merge, error) {
-	out, err := run(dir, nil, exec.CommandContext(ctx, "git", "log", "--first-parent", "--merges", "--no-show-signature",
-		"--format=%H"+fieldSep+"%P"+fieldSep+"%cI"))
+// Merges lists the merge commits on the first-parent history of rev in dir.
+func Merges(ctx context.Context, dir, rev string) ([]Merge, error) {
+	out, err := run(dir, nil, exec.CommandContext(ctx, "git", "log", "--first-parent", "--merges", //nolint:gosec // argv entries, no shell
+		"--no-show-signature", "--format=%H"+fieldSep+"%P"+fieldSep+"%cI", rev))
 	if err != nil {
 		return nil, err
 	}
@@ -92,44 +92,6 @@ func changedFiles(ctx context.Context, dir string, h header) ([]string, error) {
 	}
 
 	return tokens[1:], nil
-}
-
-// TrackedFiles lists the files in the index under dir, relative to dir.
-func TrackedFiles(ctx context.Context, dir string) ([]string, error) {
-	out, err := run(dir, nil, exec.CommandContext(ctx, "git", "ls-files", "-z"))
-	if err != nil {
-		return nil, err
-	}
-
-	return splitNames(out), nil
-}
-
-// Churn counts, per file under dir, the non-merge commits of HEAD that changed it.
-func Churn(ctx context.Context, dir string) (map[string]int, error) {
-	out, err := run(dir, nil, exec.CommandContext(ctx, "git", "log", "--root", "--no-merges", "--no-show-signature",
-		"--format=", "--name-only", "-z", "--no-renames", "--relative"))
-	if err != nil {
-		return nil, err
-	}
-
-	churn := map[string]int{}
-	for _, name := range splitNames(out) {
-		churn[name]++
-	}
-
-	return churn, nil
-}
-
-func splitNames(out string) []string {
-	names := []string{}
-
-	for name := range strings.SplitSeq(out, "\x00") {
-		if name != "" {
-			names = append(names, name)
-		}
-	}
-
-	return names
 }
 
 func run(dir string, stdin io.Reader, cmd *exec.Cmd) (string, error) {

@@ -22,29 +22,29 @@ type Change struct {
 
 // Result is the cross-area measurement.
 type Result struct {
-	Months []Month
-	Pairs  []Pair
+	Months []Month `json:"months"`
+	Pairs  []Pair  `json:"pairs"`
 }
 
 // Month counts the pull requests merged in one month.
 type Month struct {
-	Period    string
-	PRs       int
-	CrossArea int
-	Groups    []GroupCount
+	Period    string       `json:"period"`
+	PRs       int          `json:"prs"`
+	CrossArea int          `json:"crossArea"`
+	Groups    []GroupCount `json:"groups"`
 }
 
 // GroupCount counts the pull requests that touch two or more areas of one group.
 type GroupCount struct {
-	Group     string
-	CrossArea int
+	Group     string `json:"group"`
+	CrossArea int    `json:"crossArea"`
 }
 
 // Pair counts the pull requests that touch both areas.
 type Pair struct {
-	A   string
-	B   string
-	PRs int
+	A   string `json:"a"`
+	B   string `json:"b"`
+	PRs int    `json:"prs"`
 }
 
 type pairKey struct {

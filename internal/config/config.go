@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -27,6 +28,8 @@ var (
 	ErrParse = errors.New("parse config")
 	// ErrInvalidField reports a missing or out-of-range field.
 	ErrInvalidField = errors.New("invalid field")
+	// ErrInvalidName reports an area or group name outside the allowed characters.
+	ErrInvalidName = errors.New("invalid name")
 	// ErrInvalidAreaPath reports an area path that is absolute, leaves the repository, goes through a symbolic link, or cannot be inspected.
 	ErrInvalidAreaPath = errors.New("invalid area path")
 	// ErrAreaPathNotFound reports an area path that is not a directory in the repository.
@@ -40,6 +43,9 @@ var (
 	// ErrInvalidCoveragePath reports a coverage file or root that is not a clean path inside the repository.
 	ErrInvalidCoveragePath = errors.New("invalid coverage path")
 )
+
+// namePattern keeps names clear of the ">" that joins them in report keys, and of case and space ambiguity.
+var namePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 // Config is the content of repohealth.yml.
 type Config struct {
@@ -170,6 +176,7 @@ func validate(root *os.Root, cfg Config) ([]Area, error) {
 
 	areas, errs := cleanAreas(root, cfg.Areas)
 
+	errs = append(errs, validateNames(cfg)...)
 	errs = append(errs, validateGroups(cfg.Groups, cfg.Areas)...)
 	errs = append(errs, validatePatterns("exclude", cfg.Exclude)...)
 	errs = append(errs, validatePatterns("stablePackages", cfg.StablePackages)...)
@@ -276,6 +283,24 @@ func findOverlap(owners []ownedPath, p string) (ownedPath, bool) {
 
 func contains(dir, p string) bool {
 	return dir == "." || dir == p || strings.HasPrefix(p, dir+"/")
+}
+
+func validateNames(cfg Config) []error {
+	var errs []error
+
+	for _, a := range cfg.Areas {
+		if !namePattern.MatchString(a.Name) {
+			errs = append(errs, fmt.Errorf("%w: area %q", ErrInvalidName, a.Name))
+		}
+	}
+
+	for _, g := range cfg.Groups {
+		if !namePattern.MatchString(g.Name) {
+			errs = append(errs, fmt.Errorf("%w: group %q", ErrInvalidName, g.Name))
+		}
+	}
+
+	return errs
 }
 
 func validateGroups(groups []Group, areas []Area) []error {

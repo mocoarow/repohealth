@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mocoarow/repohealth/internal/config"
 	"github.com/mocoarow/repohealth/internal/source"
@@ -121,4 +122,124 @@ func Test_GoProduction_shouldReportFalse_whenFileIsNotNonTestGo(t *testing.T) {
 			assert.False(t, got)
 		})
 	}
+}
+
+func Test_ScriptProduction_shouldReportTrue_whenFileIsNonTestScript(t *testing.T) {
+	t.Parallel()
+
+	// given
+	cfg := testConfig()
+
+	// when
+	got := source.ScriptProduction(cfg, "svc/app/a.tsx")
+
+	// then
+	assert.True(t, got)
+}
+
+func Test_ScriptProduction_shouldReportFalse_whenFileIsNotNonTestScript(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		file string
+	}{
+		{name: "script test", file: "svc/app/a.test.ts"},
+		{name: "go", file: "svc/domain/user.go"},
+		{name: "declaration file", file: "svc/app/types.d.ts"},
+		{name: "outside every area", file: "tools/a.ts"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			cfg := testConfig()
+
+			// when
+			got := source.ScriptProduction(cfg, tt.file)
+
+			// then
+			assert.False(t, got)
+		})
+	}
+}
+
+func Test_Lang_MarshalText_shouldReturnShortName_whenLangIsKnown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		lang source.Lang
+		want string
+	}{
+		{name: "go", lang: source.Go, want: "go"},
+		{name: "script", lang: source.Script, want: "ts"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// when
+			got, err := tt.lang.MarshalText()
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, string(got))
+		})
+	}
+}
+
+func Test_Lang_MarshalText_shouldReturnErrUnknownLang_whenLangIsZero(t *testing.T) {
+	t.Parallel()
+
+	// given
+	var lang source.Lang
+
+	// when
+	_, err := lang.MarshalText()
+
+	// then
+	require.ErrorIs(t, err, source.ErrUnknownLang)
+}
+
+func Test_Lang_UnmarshalText_shouldReturnLang_whenTextIsKnown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		text string
+		want source.Lang
+	}{
+		{name: "go", text: "go", want: source.Go},
+		{name: "ts", text: "ts", want: source.Script},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// given
+			var lang source.Lang
+
+			// when
+			err := lang.UnmarshalText([]byte(tt.text))
+
+			// then
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, lang)
+		})
+	}
+}
+
+func Test_Lang_UnmarshalText_shouldReturnErrUnknownLang_whenTextIsUnknown(t *testing.T) {
+	t.Parallel()
+
+	// given
+	var lang source.Lang
+
+	// when
+	err := lang.UnmarshalText([]byte("rust"))
+
+	// then
+	require.ErrorIs(t, err, source.ErrUnknownLang)
 }

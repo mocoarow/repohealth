@@ -23,9 +23,13 @@ import (
 )
 
 const (
-	biomeCategory = "lint/complexity/noExcessiveCognitiveComplexity"
-	biomeConfig   = `{"linter":{"rules":{"complexity":{"noExcessiveCognitiveComplexity":` +
+	internalCategory = "internalError"
+	parseCategory    = "parse"
+	biomeCategory    = "lint/complexity/noExcessiveCognitiveComplexity"
+	// files.maxSize is in bytes; Biome skips larger files silently, so the limit is raised far beyond real sources.
+	biomeConfig = `{"files":{"maxSize":4294967296},"linter":{"rules":{"complexity":{"noExcessiveCognitiveComplexity":` +
 		`{"level":"error","options":{"maxAllowedComplexity":1}}}}}}`
+	biomeBatch      = 200
 	anonymous       = "(anonymous)"
 	biomeExitErrors = 1
 	configFileMode  = 0o600
@@ -34,6 +38,12 @@ const (
 var (
 	// ErrUnexpectedBiomeOutput reports Biome output this package cannot read.
 	ErrUnexpectedBiomeOutput = errors.New("unexpected biome output")
+
+	// ErrBiomeInternal reports a Biome diagnostic about its own failure, such as an unreadable file.
+	ErrBiomeInternal = errors.New("biome internal error")
+
+	// ErrBiomeParse reports a file Biome could not parse; Biome skips the broken code, so its functions would go missing.
+	ErrBiomeParse = errors.New("biome parse error")
 
 	complexityMessage = regexp.MustCompile(`^Excessive complexity of (\d+) detected`)
 	identifier        = regexp.MustCompile(`^[\p{L}_$][\p{L}\p{N}_$]*$`)
@@ -62,21 +72,16 @@ type biomePos struct {
 
 // TypeScript measures, with Biome, the cognitive complexity of non-test scripts among files that belong to an area.
 func TypeScript(ctx context.Context, cfg config.Config, files []string) ([]Function, error) {
-	byDir := map[string]map[string]bool{}
+	byDir := map[string][]string{}
 
 	for _, file := range files {
-		kind, ok := source.Classify(cfg, file)
-		if !ok || kind.Lang != source.Script || kind.Test {
+		if !source.ScriptProduction(cfg, file) {
 			continue
 		}
 
 		dir, _ := cfg.PathOf(file)
 
-		if byDir[dir] == nil {
-			byDir[dir] = map[string]bool{}
-		}
-
-		byDir[dir][file] = true
+		byDir[dir] = append(byDir[dir], file)
 	}
 
 	funcs := []Function{}
@@ -97,8 +102,67 @@ func TypeScript(ctx context.Context, cfg config.Config, files []string) ([]Funct
 	return funcs, nil
 }
 
-func lintDir(ctx context.Context, root, dir string, targets map[string]bool) ([]Function, error) {
-	out, stderr, err := runBiome(ctx, filepath.Join(root, filepath.FromSlash(dir)))
+func lintDir(ctx context.Context, root, dir string, files []string) ([]Function, error) {
+	configDir, err := os.MkdirTemp("", "repohealth-biome-")
+	if err != nil {
+		return nil, fmt.Errorf("create biome config dir: %w", err)
+	}
+	defer func() {
+		if err := os.RemoveAll(configDir); err != nil {
+			slog.Error("remove biome config dir", "dir", configDir, "error", err)
+		}
+	}()
+
+	if err := os.WriteFile(filepath.Join(configDir, "biome.json"), []byte(biomeConfig), configFileMode); err != nil {
+		return nil, fmt.Errorf("write biome config: %w", err)
+	}
+
+	sources := os.DirFS(root)
+	funcs := []Function{}
+
+	for batch := range slices.Chunk(files, biomeBatch) {
+		found, err := lintBatch(ctx, batchRun{
+			sources:   sources,
+			workDir:   filepath.Join(root, filepath.FromSlash(dir)),
+			configDir: configDir,
+			area:      dir,
+		}, batch)
+		if err != nil {
+			return nil, err
+		}
+
+		funcs = append(funcs, found...)
+	}
+
+	return funcs, nil
+}
+
+// batchRun is what one Biome invocation needs besides its files: area is the repository-relative area path,
+// workDir the same directory on disk.
+type batchRun struct {
+	sources   fs.FS
+	workDir   string
+	configDir string
+	area      string
+}
+
+func relativeTo(area, file string) string {
+	if area == "." {
+		return file
+	}
+
+	return strings.TrimPrefix(file, area+"/")
+}
+
+func lintBatch(ctx context.Context, run batchRun, files []string) ([]Function, error) {
+	dir := run.area
+	rel := make([]string, 0, len(files))
+
+	for _, file := range files {
+		rel = append(rel, relativeTo(dir, file))
+	}
+
+	out, stderr, err := runBiome(ctx, run.workDir, run.configDir, rel)
 	if err != nil {
 		return nil, fmt.Errorf("biome in %s: %w", dir, err)
 	}
@@ -108,13 +172,22 @@ func lintDir(ctx context.Context, root, dir string, targets map[string]bool) ([]
 		return nil, fmt.Errorf("biome in %s: %w: %s", dir, err, stderr)
 	}
 
-	sources := os.DirFS(root)
+	return functionsOf(run.sources, dir, files, diagnostics)
+}
+
+// functionsOf converts diagnostics to functions; every diagnostic must belong to a requested file.
+func functionsOf(sources fs.FS, dir string, files []string, diagnostics []biomeDiagnostic) ([]Function, error) {
+	targets := map[string]bool{}
+	for _, file := range files {
+		targets[file] = true
+	}
+
 	funcs := []Function{}
 
 	for _, d := range diagnostics {
 		file := path.Join(dir, d.Location.Path)
 		if !targets[file] {
-			continue
+			return nil, fmt.Errorf("%w: diagnostic for %s, which was not requested", ErrUnexpectedBiomeOutput, file)
 		}
 
 		f, err := toFunction(sources, file, d)
@@ -128,23 +201,12 @@ func lintDir(ctx context.Context, root, dir string, targets map[string]bool) ([]
 	return funcs, nil
 }
 
-func runBiome(ctx context.Context, dir string) ([]byte, string, error) {
-	configDir, err := os.MkdirTemp("", "repohealth-biome-")
-	if err != nil {
-		return nil, "", fmt.Errorf("create biome config dir: %w", err)
-	}
-	defer func() {
-		if err := os.RemoveAll(configDir); err != nil {
-			slog.Error("remove biome config dir", "dir", configDir, "error", err)
-		}
-	}()
-
-	if err := os.WriteFile(filepath.Join(configDir, "biome.json"), []byte(biomeConfig), configFileMode); err != nil {
-		return nil, "", fmt.Errorf("write biome config: %w", err)
-	}
-
-	cmd := exec.CommandContext(ctx, "biome", "lint", "--only=complexity/noExcessiveCognitiveComplexity",
-		"--reporter=json", "--max-diagnostics=none", "--colors=off", ".")
+func runBiome(ctx context.Context, dir, configDir string, files []string) ([]byte, string, error) {
+	args := append([]string{
+		"lint", "--only=complexity/noExcessiveCognitiveComplexity",
+		"--reporter=json", "--max-diagnostics=none", "--colors=off", "--",
+	}, files...)
+	cmd := exec.CommandContext(ctx, "biome", args...) //nolint:gosec // arguments follow "--", so file names cannot act as options
 
 	var stdout, stderr bytes.Buffer
 
@@ -153,7 +215,7 @@ func runBiome(ctx context.Context, dir string) ([]byte, string, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err = cmd.Run()
+	err := cmd.Run()
 
 	errText := strings.TrimSpace(stderr.String())
 	if err != nil && !reportedErrors(err) {
@@ -179,6 +241,14 @@ func parseBiome(out []byte) ([]biomeDiagnostic, error) {
 	diagnostics := []biomeDiagnostic{}
 
 	for _, d := range report.Diagnostics {
+		if strings.HasPrefix(d.Category, internalCategory) {
+			return nil, fmt.Errorf("%w: %s: %s: %s", ErrBiomeInternal, d.Category, d.Location.Path, d.Message)
+		}
+
+		if d.Category == parseCategory {
+			return nil, fmt.Errorf("%w: %s: %s", ErrBiomeParse, d.Location.Path, d.Message)
+		}
+
 		if d.Category == biomeCategory {
 			diagnostics = append(diagnostics, d)
 		}
