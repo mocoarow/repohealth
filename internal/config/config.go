@@ -33,8 +33,8 @@ var (
 	ErrAreaPathNotFound = errors.New("area path not found")
 	// ErrAreaOverlap reports two area paths where one contains the other.
 	ErrAreaOverlap = errors.New("area paths overlap")
-	// ErrInvalidPattern reports an exclude pattern that is not a valid glob or not a clean slash-separated relative path.
-	ErrInvalidPattern = errors.New("invalid exclude pattern")
+	// ErrInvalidPattern reports a pattern that is not a valid glob or not a clean slash-separated relative path.
+	ErrInvalidPattern = errors.New("invalid pattern")
 	// ErrUnknownGroupArea reports a group member that is not the name of an area.
 	ErrUnknownGroupArea = errors.New("group names an unknown area")
 )
@@ -47,6 +47,8 @@ type Config struct {
 	Areas   []Area   `validate:"min=1,unique=Name,dive" yaml:"areas"`
 	Groups  []Group  `validate:"unique=Name,dive"       yaml:"groups"`
 	Exclude []string `validate:"dive,required"          yaml:"exclude"`
+	// StablePackages are globs over package directories whose instability is reported.
+	StablePackages []string `validate:"dive,required" yaml:"stablePackages"`
 }
 
 // Area is a named group of directories whose changes count as one unit.
@@ -94,7 +96,14 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("load %s: %w", path, err)
 	}
 
-	return Config{Root: dir, Version: cfg.Version, Areas: areas, Groups: cfg.Groups, Exclude: cfg.Exclude}, nil
+	return Config{
+		Root:           dir,
+		Version:        cfg.Version,
+		Areas:          areas,
+		Groups:         cfg.Groups,
+		Exclude:        cfg.Exclude,
+		StablePackages: cfg.StablePackages,
+	}, nil
 }
 
 func decode(root *os.Root, name string) (Config, error) {
@@ -151,7 +160,8 @@ func validate(root *os.Root, cfg Config) ([]Area, error) {
 	areas, errs := cleanAreas(root, cfg.Areas)
 
 	errs = append(errs, validateGroups(cfg.Groups, cfg.Areas)...)
-	errs = append(errs, validateExclude(cfg.Exclude)...)
+	errs = append(errs, validatePatterns("exclude", cfg.Exclude)...)
+	errs = append(errs, validatePatterns("stablePackages", cfg.StablePackages)...)
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, errors.Join(errs...))
 	}
@@ -275,12 +285,12 @@ func validateGroups(groups []Group, areas []Area) []error {
 	return errs
 }
 
-func validateExclude(patterns []string) []error {
+func validatePatterns(field string, patterns []string) []error {
 	var errs []error
 
 	for _, pattern := range patterns {
 		if !fs.ValidPath(pattern) || !doublestar.ValidatePattern(pattern) {
-			errs = append(errs, fmt.Errorf("%w: %s", ErrInvalidPattern, pattern))
+			errs = append(errs, fmt.Errorf("%w: %s: %s", ErrInvalidPattern, field, pattern))
 		}
 	}
 

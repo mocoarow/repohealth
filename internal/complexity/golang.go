@@ -9,12 +9,12 @@ import (
 	"go/types"
 	"io/fs"
 	"slices"
-	"strings"
 
 	"github.com/fzipp/gocyclo"
 	"github.com/uudashr/gocognit"
 
 	"github.com/mocoarow/repohealth/internal/config"
+	"github.com/mocoarow/repohealth/internal/gosrc"
 )
 
 // CycloNotMeasured is the Cyclo of a function in a language without a cyclomatic measure.
@@ -29,12 +29,12 @@ type Function struct {
 	Cognit int
 }
 
-// Go measures the hand-written, non-test Go functions among files that belong to an area.
+// Go measures the hand-written functions in the files gosrc.Counted accepts.
 func Go(fsys fs.FS, cfg config.Config, files []string) ([]Function, error) {
 	funcs := []Function{}
 
 	for _, file := range files {
-		if !counted(cfg, file) {
+		if !gosrc.Counted(cfg, file) {
 			continue
 		}
 
@@ -51,16 +51,6 @@ func Go(fsys fs.FS, cfg config.Config, files []string) ([]Function, error) {
 	})
 
 	return funcs, nil
-}
-
-func counted(cfg config.Config, file string) bool {
-	if !strings.HasSuffix(file, ".go") || strings.HasSuffix(file, "_test.go") {
-		return false
-	}
-
-	_, ok := cfg.AreaOf(file)
-
-	return ok
 }
 
 func measureFile(fsys fs.FS, file string) ([]Function, error) {
