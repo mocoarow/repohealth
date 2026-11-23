@@ -77,6 +77,32 @@ func Test_Config_AreaOf_shouldReportFalse_whenFileIsNotCounted(t *testing.T) {
 	}
 }
 
+func Test_Config_PathOf_shouldReturnAreaPath_whenFileIsUnderAreaPath(t *testing.T) {
+	t.Parallel()
+
+	// given
+	cfg := matchConfig()
+
+	// when
+	got, _ := cfg.PathOf("shared/ui/button.tsx")
+
+	// then
+	assert.Equal(t, "shared/ui", got)
+}
+
+func Test_Config_PathOf_shouldReportFalse_whenFileIsExcluded(t *testing.T) {
+	t.Parallel()
+
+	// given
+	cfg := matchConfig()
+
+	// when
+	_, ok := cfg.PathOf("svc-web/build/index.js")
+
+	// then
+	assert.False(t, ok)
+}
+
 func Test_Config_AreaOf_shouldReturnArea_whenAreaIsRepositoryRoot(t *testing.T) {
 	t.Parallel()
 

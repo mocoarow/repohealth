@@ -1,0 +1,9 @@
+---
+registries:
+  - type: standard
+    ref: v4.492.0
+checksum:
+  enabled: true
+packages:
+  - name: biomejs/biome
+    version: "@biomejs/biome@2.4.10"

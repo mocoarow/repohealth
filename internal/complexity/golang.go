@@ -17,7 +17,10 @@ import (
 	"github.com/mocoarow/repohealth/internal/config"
 )
 
-// Function is the complexity of one function declaration.
+// CycloNotMeasured is the Cyclo of a function in a language without a cyclomatic measure.
+const CycloNotMeasured = 0
+
+// Function is the complexity of one function.
 type Function struct {
 	File   string
 	Line   int
