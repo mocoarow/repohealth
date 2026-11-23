@@ -35,6 +35,8 @@ var (
 	ErrAreaOverlap = errors.New("area paths overlap")
 	// ErrInvalidPattern reports an exclude pattern that is not a valid glob or not a clean slash-separated relative path.
 	ErrInvalidPattern = errors.New("invalid exclude pattern")
+	// ErrUnknownGroupArea reports a group member that is not the name of an area.
+	ErrUnknownGroupArea = errors.New("group names an unknown area")
 )
 
 // Config is the content of repohealth.yml.
@@ -43,6 +45,7 @@ type Config struct {
 	Root    string   `yaml:"-"`
 	Version int      `validate:"eq=1"                   yaml:"version"`
 	Areas   []Area   `validate:"min=1,unique=Name,dive" yaml:"areas"`
+	Groups  []Group  `validate:"unique=Name,dive"       yaml:"groups"`
 	Exclude []string `validate:"dive,required"          yaml:"exclude"`
 }
 
@@ -51,6 +54,12 @@ type Area struct {
 	Name string `validate:"required" yaml:"name"`
 	// Paths are slash-separated and cleaned, e.g. "./shared/ui/" is returned as "shared/ui".
 	Paths []string `validate:"min=1,dive,required" yaml:"paths"`
+}
+
+// Group is a named set of areas, such as the backend services, measured on its own.
+type Group struct {
+	Name  string   `validate:"required"                   yaml:"name"`
+	Areas []string `validate:"min=2,unique,dive,required" yaml:"areas"`
 }
 
 type ownedPath struct {
@@ -85,7 +94,7 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("load %s: %w", path, err)
 	}
 
-	return Config{Root: dir, Version: cfg.Version, Areas: areas, Exclude: cfg.Exclude}, nil
+	return Config{Root: dir, Version: cfg.Version, Areas: areas, Groups: cfg.Groups, Exclude: cfg.Exclude}, nil
 }
 
 func decode(root *os.Root, name string) (Config, error) {
@@ -141,6 +150,7 @@ func validate(root *os.Root, cfg Config) ([]Area, error) {
 
 	areas, errs := cleanAreas(root, cfg.Areas)
 
+	errs = append(errs, validateGroups(cfg.Groups, cfg.Areas)...)
 	errs = append(errs, validateExclude(cfg.Exclude)...)
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, errors.Join(errs...))
@@ -244,6 +254,25 @@ func findOverlap(owners []ownedPath, p string) (ownedPath, bool) {
 
 func contains(dir, p string) bool {
 	return dir == "." || dir == p || strings.HasPrefix(p, dir+"/")
+}
+
+func validateGroups(groups []Group, areas []Area) []error {
+	known := make(map[string]bool, len(areas))
+	for _, a := range areas {
+		known[a.Name] = true
+	}
+
+	var errs []error
+
+	for _, g := range groups {
+		for _, name := range g.Areas {
+			if !known[name] {
+				errs = append(errs, fmt.Errorf("%w: group %s: %s", ErrUnknownGroupArea, g.Name, name))
+			}
+		}
+	}
+
+	return errs
 }
 
 func validateExclude(patterns []string) []error {
