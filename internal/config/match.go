@@ -32,11 +32,20 @@ func (c Config) locate(file string) (string, string, bool) {
 	return "", "", false
 }
 
+// Stable reports whether the package directory dir matches a stablePackages pattern.
+func (c Config) Stable(dir string) bool {
+	return matchAny(c.StablePackages, dir)
+}
+
 // Excluded reports whether file matches an exclude pattern.
 func (c Config) Excluded(file string) bool {
-	for _, pattern := range c.Exclude {
+	return matchAny(c.Exclude, file)
+}
+
+func matchAny(patterns []string, name string) bool {
+	for _, pattern := range patterns {
 		// Load has already rejected invalid patterns.
-		if doublestar.MatchUnvalidated(pattern, file) {
+		if doublestar.MatchUnvalidated(pattern, name) {
 			return true
 		}
 	}
