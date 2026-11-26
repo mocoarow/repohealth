@@ -3,6 +3,7 @@ package report
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -35,10 +36,31 @@ func Write(dir string, summaries []snapshot.Summary, latest snapshot.Detail) err
 	return writeLatest(dir, latest)
 }
 
-func writeCSV(dir, name string, header []string, rows [][]string) (err error) {
+func writeCSV(dir, name string, header []string, rows [][]string) error {
 	path := filepath.Join(dir, name)
 
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm) //nolint:gosec // the path is inside the directory the caller chose
+	return writeFile(path, func(f io.Writer) error {
+		w := csv.NewWriter(f)
+		if err := w.Write(header); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+
+		if err := w.WriteAll(rows); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+
+		w.Flush()
+
+		if err := w.Error(); err != nil {
+			return fmt.Errorf("flush %s: %w", path, err)
+		}
+
+		return nil
+	})
+}
+
+func writeFile(path string, write func(io.Writer) error) (err error) {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm) //nolint:gosec // the caller chose the path
 	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
 	}
@@ -53,22 +75,7 @@ func writeCSV(dir, name string, header []string, rows [][]string) (err error) {
 		}
 	}()
 
-	w := csv.NewWriter(f)
-	if err := w.Write(header); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-
-	if err := w.WriteAll(rows); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-
-	w.Flush()
-
-	if err := w.Error(); err != nil {
-		return fmt.Errorf("flush %s: %w", path, err)
-	}
-
-	return nil
+	return write(f)
 }
 
 func itoa(n int) string {
@@ -77,6 +84,15 @@ func itoa(n int) string {
 
 func formatTime(t time.Time) string {
 	return t.Format(time.RFC3339)
+}
+
+// percent reports covered/lines as a percentage, and false when there are no lines.
+func percent(covered, lines int) (string, bool) {
+	if lines == 0 {
+		return "", false
+	}
+
+	return formatFloat(float64(covered)*percentScale/float64(lines), pctDecimals), true
 }
 
 func formatFloat(v float64, decimals int) string {

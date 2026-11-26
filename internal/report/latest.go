@@ -46,27 +46,34 @@ func writeLatest(dir string, d snapshot.Detail) error {
 }
 
 func crossAreaMonths(d snapshot.Detail) table {
-	header := []string{"period", "prs", "cross_area"}
-
-	// every month of a result carries the same groups in the same order
-	if len(d.CrossArea.Months) > 0 {
-		for _, g := range d.CrossArea.Months[0].Groups {
-			header = append(header, "cross_area_"+g.Group)
-		}
-	}
+	header := append([]string{"period", "prs", "cross_area"}, crossAreaGroups(d, "cross_area_%s")...)
 
 	rows := make([][]string, 0, len(d.CrossArea.Months))
 
 	for _, m := range d.CrossArea.Months {
-		row := []string{m.Period, itoa(m.PRs), itoa(m.CrossArea)}
+		counts := make([]string, 0, len(m.Groups))
 		for _, g := range m.Groups {
-			row = append(row, itoa(g.CrossArea))
+			counts = append(counts, itoa(g.CrossArea))
 		}
 
-		rows = append(rows, row)
+		rows = append(rows, append([]string{m.Period, itoa(m.PRs), itoa(m.CrossArea)}, counts...))
 	}
 
 	return table{name: "crossarea_months.csv", header: header, rows: rows}
+}
+
+// crossAreaGroups names the group columns with format; every month of a result carries the same groups in the same order.
+func crossAreaGroups(d snapshot.Detail, format string) []string {
+	if len(d.CrossArea.Months) == 0 {
+		return nil
+	}
+
+	groups := make([]string, 0, len(d.CrossArea.Months[0].Groups))
+	for _, g := range d.CrossArea.Months[0].Groups {
+		groups = append(groups, fmt.Sprintf(format, g.Group))
+	}
+
+	return groups
 }
 
 func crossAreaPairs(d snapshot.Detail) table {
