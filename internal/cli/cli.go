@@ -46,6 +46,7 @@ func (r runner) commands() []command {
 		{name: "validate", summary: "load and validate the configuration file", run: runValidate},
 		{name: "snapshot", summary: "measure HEAD and append the result to .repohealth", run: r.runSnapshot},
 		{name: "report", summary: "write CSV files from the saved history", run: runReport},
+		{name: "markdown", summary: "write a Markdown report from the saved history", run: runMarkdown},
 	}
 }
 

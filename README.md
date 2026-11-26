@@ -9,6 +9,7 @@ Everything specific to a repository lives in that file.
 go run github.com/mocoarow/repohealth/cmd/repohealth@<version> validate -config repohealth.yml
 go run github.com/mocoarow/repohealth/cmd/repohealth@<version> snapshot -config repohealth.yml
 go run github.com/mocoarow/repohealth/cmd/repohealth@<version> report -config repohealth.yml -out report
+go run github.com/mocoarow/repohealth/cmd/repohealth@<version> markdown -config repohealth.yml -out .repohealth/REPORT.md
 ```
 
 | Command | Description |
@@ -16,8 +17,9 @@ go run github.com/mocoarow/repohealth/cmd/repohealth@<version> report -config re
 | `validate` | Load and validate the configuration file |
 | `snapshot` | Measure the HEAD commit and append the result to `.repohealth/` |
 | `report` | Write CSV files from the saved history to the directory given by `-out` |
+| `markdown` | Write a Markdown report of the saved history to the file given by `-out` |
 
-`snapshot` writes `.repohealth/history.jsonl` (one line per snapshot) and `.repohealth/latest.json` next to the configuration file. Commit `.repohealth/` so the history is shared; changes under it do not make the worktree dirty.
+`snapshot` writes `.repohealth/history.jsonl` (one line per snapshot) and `.repohealth/latest.json` next to the configuration file. Commit `.repohealth/` so the history is shared; changes under it do not make the worktree dirty. Write the Markdown report into it (for example `.repohealth/REPORT.md`) to read the history on GitHub.
 
 `snapshot` requires:
 

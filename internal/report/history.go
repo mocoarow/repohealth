@@ -105,9 +105,8 @@ func areaRows(a snapshot.Area) []metricRow {
 		{"ts_cognit_over_limit", n, itoa(c.TS.CognitOverLimit)},
 	}
 
-	if a.Coverage.Lines > 0 {
-		pct := float64(a.Coverage.Covered) * percentScale / float64(a.Coverage.Lines)
-		rows = append(rows, metricRow{"coverage_pct", n, formatFloat(pct, pctDecimals)})
+	if pct, ok := percent(a.Coverage.Covered, a.Coverage.Lines); ok {
+		rows = append(rows, metricRow{"coverage_pct", n, pct})
 	}
 
 	return rows

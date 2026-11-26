@@ -84,6 +84,50 @@ func skippedSummary(t *testing.T, h snapshot.Header, skipped int) snapshot.Summa
 	}
 }
 
+// areaOf returns an area whose values are derived from n, so each area and snapshot differs.
+func areaOf(name string, n int) snapshot.Area {
+	return snapshot.Area{
+		Name:     name,
+		Coverage: snapshot.Lines{Covered: n, Lines: n + 1},
+		Size: snapshot.Size{
+			Go: snapshot.LangSize{Lines: 100 * n, TestLines: 50 * n},
+			TS: snapshot.LangSize{Lines: 30 * n, TestLines: 20 * n},
+		},
+		Complexity: snapshot.Complexity{
+			Go: snapshot.GoComplexity{Functions: 10 * n, CycloMax: n + 1, CognitSum: 7 * n, CognitMax: n + 2, CognitOverLimit: n},
+			TS: snapshot.TSComplexity{Functions: 3 * n, CognitSum: 5 * n, CognitMax: n + 3, CognitOverLimit: n + 4},
+		},
+	}
+}
+
+func summaryOf(h snapshot.Header, areas ...snapshot.Area) snapshot.Summary {
+	return snapshot.Summary{
+		Header:          h,
+		Areas:           areas,
+		AreaImports:     areaImports(),
+		Stability:       stability(),
+		CoverageReports: coverageReports(),
+	}
+}
+
+func committedOn(rev string, day int) snapshot.Header {
+	return headerOf(rev, time.Date(2026, 3, day, 12, 0, 0, 0, zone()), time.Date(2026, 3, day, 9, 0, 0, 0, zone()))
+}
+
+// trendSummaries returns three snapshots: "gone" leaves after the first, "web" joins in the last and has no coverage lines.
+func trendSummaries(t *testing.T) []snapshot.Summary {
+	t.Helper()
+
+	web := areaOf("web", 3)
+	web.Coverage = snapshot.Lines{Covered: 0, Lines: 0}
+
+	return []snapshot.Summary{
+		summaryOf(committedOn("r2", 2), areaOf("api", 2)),
+		summaryOf(fixedHeader("abc123"), areaOf("api", 4), web),
+		summaryOf(committedOn("r1", 1), areaOf("api", 1), areaOf("gone", 9)),
+	}
+}
+
 // fixedDetail returns a Detail whose every value differs from its zero value.
 func fixedDetail(t *testing.T) snapshot.Detail {
 	t.Helper()
